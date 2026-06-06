@@ -1,0 +1,774 @@
+{
+  "metadata": {
+    "title": "ForgeFlow Runnable Workflow Case Studies",
+    "description": "Kumpulan payload workflow siap pakai untuk JSON builder atau POST /api/v1/workflows. Ambil satu object dari array workflows saat membuat workflow baru.",
+    "backendBaseUrl": "${APP_URL}",
+    "mockEndpoints": [
+      "GET /api/mock/orders/{orderId}",
+      "POST /api/mock/notifications",
+      "POST /api/mock/orders/{orderId}/status",
+      "POST /api/webhooks/workflows/{workflowId}"
+    ]
+  },
+  "workflows": [
+    {
+      "name": "Manual Paid Order Fulfillment",
+      "description": "Manual workflow untuk order paid: delay, ambil order, cek status, siapkan pesan, kirim notifikasi, lalu ubah status ke processing.",
+      "status": "active",
+      "changeNote": "Case study: manual paid fulfillment",
+      "definition": {
+        "name": "Manual Paid Order Fulfillment",
+        "trigger": "manual",
+        "timeoutMs": 120000,
+        "retryPolicy": {
+          "maxAttempts": 1,
+          "backoff": "exponential"
+        },
+        "steps": [
+          {
+            "id": "wait-start",
+            "label": "Wait before processing",
+            "type": "delay",
+            "dependsOn": [],
+            "config": {
+              "durationMs": 500
+            }
+          },
+          {
+            "id": "get-paid-order",
+            "label": "Get paid order",
+            "type": "http",
+            "dependsOn": ["wait-start"],
+            "config": {
+              "method": "GET",
+              "url": "${APP_URL}/api/mock/orders/1002",
+              "headers": {},
+              "body": null,
+              "timeoutMs": 10000
+            }
+          },
+          {
+            "id": "check-paid",
+            "label": "Check paid status",
+            "type": "condition",
+            "dependsOn": ["get-paid-order"],
+            "config": {
+              "left": "{{ steps.get-paid-order.body.data.status }}",
+              "operator": "equals",
+              "right": "paid",
+              "onTrue": ["prepare-fulfillment-message"],
+              "onFalse": ["send-payment-reminder"]
+            }
+          },
+          {
+            "id": "prepare-fulfillment-message",
+            "label": "Prepare fulfillment message",
+            "type": "script",
+            "dependsOn": ["check-paid"],
+            "config": {
+              "functionName": "echoPayload",
+              "input": {
+                "orderId": "{{ steps.get-paid-order.body.data.id }}",
+                "status": "{{ steps.get-paid-order.body.data.status }}",
+                "message": "Order {{ steps.get-paid-order.body.data.id }} sudah paid dan siap diproses."
+              }
+            }
+          },
+          {
+            "id": "send-payment-reminder",
+            "label": "Send payment reminder",
+            "type": "http",
+            "dependsOn": ["check-paid"],
+            "config": {
+              "method": "POST",
+              "url": "${APP_URL}/api/mock/notifications",
+              "headers": {
+                "Content-Type": "application/json"
+              },
+              "body": {
+                "channel": "email",
+                "recipient": "{{ steps.get-paid-order.body.data.customer.email }}",
+                "message": "Payment reminder untuk order {{ steps.get-paid-order.body.data.id }}.",
+                "metadata": {
+                  "case": "manual-paid-order-fulfillment",
+                  "branch": "payment-reminder"
+                }
+              },
+              "timeoutMs": 10000
+            }
+          },
+          {
+            "id": "notify-warehouse",
+            "label": "Notify warehouse",
+            "type": "http",
+            "dependsOn": ["prepare-fulfillment-message"],
+            "config": {
+              "method": "POST",
+              "url": "${APP_URL}/api/mock/notifications",
+              "headers": {
+                "Content-Type": "application/json"
+              },
+              "body": {
+                "channel": "email",
+                "recipient": "warehouse@example.test",
+                "message": "{{ steps.prepare-fulfillment-message.payload.message }}",
+                "metadata": {
+                  "orderId": "{{ steps.get-paid-order.body.data.id }}",
+                  "customerEmail": "{{ steps.get-paid-order.body.data.customer.email }}"
+                }
+              },
+              "timeoutMs": 10000
+            }
+          },
+          {
+            "id": "mark-processing",
+            "label": "Mark order processing",
+            "type": "http",
+            "dependsOn": ["notify-warehouse"],
+            "config": {
+              "method": "POST",
+              "url": "${APP_URL}/api/mock/orders/{{ steps.get-paid-order.body.data.id }}/status",
+              "headers": {
+                "Content-Type": "application/json"
+              },
+              "body": {
+                "status": "processing",
+                "note": "Paid order moved to processing by workflow.",
+                "metadata": {
+                  "notificationId": "{{ steps.notify-warehouse.body.data.id }}"
+                }
+              },
+              "timeoutMs": 10000
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "Webhook Order Intake",
+      "description": "Workflow webhook yang menerima orderId dari request body, mengambil order, lalu mengirim notifikasi intake.",
+      "status": "active",
+      "changeNote": "Case study: webhook trigger with dynamic input binding",
+      "definition": {
+        "name": "Webhook Order Intake",
+        "trigger": "webhook",
+        "timeoutMs": 90000,
+        "retryPolicy": {
+          "maxAttempts": 1,
+          "backoff": "exponential"
+        },
+        "steps": [
+          {
+            "id": "fetch-webhook-order",
+            "label": "Fetch webhook order",
+            "type": "http",
+            "dependsOn": [],
+            "config": {
+              "method": "GET",
+              "url": "${APP_URL}/api/mock/orders/{{ input.body.orderId }}",
+              "headers": {},
+              "body": null,
+              "timeoutMs": 10000
+            }
+          },
+          {
+            "id": "check-source",
+            "label": "Check webhook source",
+            "type": "condition",
+            "dependsOn": ["fetch-webhook-order"],
+            "config": {
+              "left": "{{ input.body.source }}",
+              "operator": "contains",
+              "right": "shop",
+              "onTrue": ["notify-webhook-intake"],
+              "onFalse": ["notify-unknown-source"]
+            }
+          },
+          {
+            "id": "notify-webhook-intake",
+            "label": "Notify webhook intake",
+            "type": "http",
+            "dependsOn": ["check-source"],
+            "config": {
+              "method": "POST",
+              "url": "${APP_URL}/api/mock/notifications",
+              "headers": {
+                "Content-Type": "application/json"
+              },
+              "body": {
+                "channel": "slack",
+                "recipient": "#ops-orders",
+                "message": "Webhook order {{ steps.fetch-webhook-order.body.data.id }} dari {{ input.body.source }} diterima.",
+                "metadata": {
+                  "eventId": "{{ input.body.eventId }}",
+                  "orderStatus": "{{ steps.fetch-webhook-order.body.data.status }}"
+                }
+              },
+              "timeoutMs": 10000
+            }
+          },
+          {
+            "id": "notify-unknown-source",
+            "label": "Notify unknown source",
+            "type": "http",
+            "dependsOn": ["check-source"],
+            "config": {
+              "method": "POST",
+              "url": "${APP_URL}/api/mock/notifications",
+              "headers": {
+                "Content-Type": "application/json"
+              },
+              "body": {
+                "channel": "email",
+                "recipient": "security@example.test",
+                "message": "Webhook source tidak dikenal untuk order {{ input.body.orderId }}.",
+                "metadata": {
+                  "source": "{{ input.body.source }}",
+                  "eventId": "{{ input.body.eventId }}"
+                }
+              },
+              "timeoutMs": 10000
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "Scheduled Operations Digest",
+      "description": "Workflow scheduled untuk mengambil beberapa order secara paralel, menghitung output sebelumnya, lalu mengirim digest operasional.",
+      "status": "active",
+      "changeNote": "Case study: scheduled trigger and parallel fan-out/fan-in",
+      "definition": {
+        "name": "Scheduled Operations Digest",
+        "trigger": "scheduled",
+        "timeoutMs": 120000,
+        "retryPolicy": {
+          "maxAttempts": 1,
+          "backoff": "exponential"
+        },
+        "steps": [
+          {
+            "id": "fetch-order-1002",
+            "label": "Fetch order 1002",
+            "type": "http",
+            "dependsOn": [],
+            "config": {
+              "method": "GET",
+              "url": "${APP_URL}/api/mock/orders/1002",
+              "headers": {},
+              "body": null,
+              "timeoutMs": 10000
+            }
+          },
+          {
+            "id": "fetch-order-1004",
+            "label": "Fetch order 1004",
+            "type": "http",
+            "dependsOn": [],
+            "config": {
+              "method": "GET",
+              "url": "${APP_URL}/api/mock/orders/1004",
+              "headers": {},
+              "body": null,
+              "timeoutMs": 10000
+            }
+          },
+          {
+            "id": "digest-wait-window",
+            "label": "Wait digest window",
+            "type": "delay",
+            "dependsOn": [],
+            "config": {
+              "durationMs": 1000
+            }
+          },
+          {
+            "id": "count-digest-inputs",
+            "label": "Count previous outputs",
+            "type": "script",
+            "dependsOn": ["fetch-order-1002", "fetch-order-1004", "digest-wait-window"],
+            "config": {
+              "functionName": "countPreviousOutputs",
+              "input": {}
+            }
+          },
+          {
+            "id": "send-digest",
+            "label": "Send digest notification",
+            "type": "http",
+            "dependsOn": ["count-digest-inputs"],
+            "config": {
+              "method": "POST",
+              "url": "${APP_URL}/api/mock/notifications",
+              "headers": {
+                "Content-Type": "application/json"
+              },
+              "body": {
+                "channel": "email",
+                "recipient": "ops@example.test",
+                "message": "Scheduled digest selesai. Output terkumpul: {{ steps.count-digest-inputs.count }}.",
+                "metadata": {
+                  "orderA": "{{ steps.fetch-order-1002.body.data.id }}",
+                  "orderB": "{{ steps.fetch-order-1004.body.data.id }}"
+                }
+              },
+              "timeoutMs": 10000
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "Pending Order Branching",
+      "description": "Workflow branching nyata: order pending masuk ke reminder branch, paid branch otomatis skipped.",
+      "status": "active",
+      "changeNote": "Case study: condition branch onFalse",
+      "definition": {
+        "name": "Pending Order Branching",
+        "trigger": "manual",
+        "timeoutMs": 90000,
+        "retryPolicy": {
+          "maxAttempts": 1,
+          "backoff": "exponential"
+        },
+        "steps": [
+          {
+            "id": "fetch-pending-order",
+            "label": "Fetch pending order",
+            "type": "http",
+            "dependsOn": [],
+            "config": {
+              "method": "GET",
+              "url": "${APP_URL}/api/mock/orders/1003",
+              "headers": {},
+              "body": null,
+              "timeoutMs": 10000
+            }
+          },
+          {
+            "id": "is-order-paid",
+            "label": "Is order paid",
+            "type": "condition",
+            "dependsOn": ["fetch-pending-order"],
+            "config": {
+              "left": "{{ steps.fetch-pending-order.body.data.status }}",
+              "operator": "equals",
+              "right": "paid",
+              "onTrue": ["paid-thank-you"],
+              "onFalse": ["pending-reminder"]
+            }
+          },
+          {
+            "id": "paid-thank-you",
+            "label": "Paid thank you notification",
+            "type": "http",
+            "dependsOn": ["is-order-paid"],
+            "config": {
+              "method": "POST",
+              "url": "${APP_URL}/api/mock/notifications",
+              "headers": {
+                "Content-Type": "application/json"
+              },
+              "body": {
+                "channel": "email",
+                "recipient": "{{ steps.fetch-pending-order.body.data.customer.email }}",
+                "message": "Terima kasih, order {{ steps.fetch-pending-order.body.data.id }} sudah dibayar.",
+                "metadata": {
+                  "branch": "paid"
+                }
+              },
+              "timeoutMs": 10000
+            }
+          },
+          {
+            "id": "pending-reminder",
+            "label": "Pending reminder notification",
+            "type": "http",
+            "dependsOn": ["is-order-paid"],
+            "config": {
+              "method": "POST",
+              "url": "${APP_URL}/api/mock/notifications",
+              "headers": {
+                "Content-Type": "application/json"
+              },
+              "body": {
+                "channel": "email",
+                "recipient": "{{ steps.fetch-pending-order.body.data.customer.email }}",
+                "message": "Order {{ steps.fetch-pending-order.body.data.id }} masih pending. Mohon selesaikan pembayaran.",
+                "metadata": {
+                  "branch": "pending",
+                  "status": "{{ steps.fetch-pending-order.body.data.status }}"
+                }
+              },
+              "timeoutMs": 10000
+            }
+          },
+          {
+            "id": "branch-summary",
+            "label": "Build branch summary",
+            "type": "script",
+            "dependsOn": ["paid-thank-you", "pending-reminder"],
+            "config": {
+              "functionName": "echoPayload",
+              "input": {
+                "orderId": "{{ steps.fetch-pending-order.body.data.id }}",
+                "conditionMatched": "{{ steps.is-order-paid.matched }}",
+                "selectedStepIds": "{{ steps.is-order-paid.selectedStepIds }}"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "High Value Refund Approval",
+      "description": "Workflow untuk request refund bernilai besar: cek total order, tunggu approval manusia, lalu update status refunded.",
+      "status": "active",
+      "changeNote": "Case study: approval pause and resume",
+      "definition": {
+        "name": "High Value Refund Approval",
+        "trigger": "webhook",
+        "timeoutMs": 3600000,
+        "retryPolicy": {
+          "maxAttempts": 1,
+          "backoff": "exponential"
+        },
+        "steps": [
+          {
+            "id": "fetch-refund-order",
+            "label": "Fetch refund order",
+            "type": "http",
+            "dependsOn": [],
+            "config": {
+              "method": "GET",
+              "url": "${APP_URL}/api/mock/orders/{{ input.body.orderId }}",
+              "headers": {},
+              "body": null,
+              "timeoutMs": 10000
+            }
+          },
+          {
+            "id": "is-high-value-refund",
+            "label": "Is high value refund",
+            "type": "condition",
+            "dependsOn": ["fetch-refund-order"],
+            "config": {
+              "left": "{{ steps.fetch-refund-order.body.data.total }}",
+              "operator": "greater_than",
+              "right": "180000",
+              "onTrue": ["approve-refund"],
+              "onFalse": ["auto-refund"]
+            }
+          },
+          {
+            "id": "approve-refund",
+            "label": "Approve high value refund",
+            "type": "approval",
+            "dependsOn": ["is-high-value-refund"],
+            "config": {
+              "title": "Approve refund {{ steps.fetch-refund-order.body.data.id }}",
+              "description": "Refund bernilai {{ steps.fetch-refund-order.body.data.total }} {{ steps.fetch-refund-order.body.data.currency }} membutuhkan approval Admin atau Editor.",
+              "approvers": ["admin", "editor"],
+              "timeoutMs": 86400000
+            }
+          },
+          {
+            "id": "auto-refund",
+            "label": "Auto refund low value order",
+            "type": "script",
+            "dependsOn": ["is-high-value-refund"],
+            "config": {
+              "functionName": "echoPayload",
+              "input": {
+                "approved": true,
+                "mode": "auto",
+                "reason": "Order below approval threshold"
+              }
+            }
+          },
+          {
+            "id": "mark-refunded-after-approval",
+            "label": "Mark refunded after approval",
+            "type": "http",
+            "dependsOn": ["approve-refund", "auto-refund"],
+            "config": {
+              "method": "POST",
+              "url": "${APP_URL}/api/mock/orders/{{ steps.fetch-refund-order.body.data.id }}/status",
+              "headers": {
+                "Content-Type": "application/json"
+              },
+              "body": {
+                "status": "refunded",
+                "note": "Refund processed by workflow.",
+                "metadata": {
+                  "requestId": "{{ input.body.requestId }}",
+                  "approvedByWorkflow": true
+                }
+              },
+              "timeoutMs": 10000
+            }
+          },
+          {
+            "id": "notify-refund-result",
+            "label": "Notify refund result",
+            "type": "http",
+            "dependsOn": ["mark-refunded-after-approval"],
+            "config": {
+              "method": "POST",
+              "url": "${APP_URL}/api/mock/notifications",
+              "headers": {
+                "Content-Type": "application/json"
+              },
+              "body": {
+                "channel": "email",
+                "recipient": "{{ steps.fetch-refund-order.body.data.customer.email }}",
+                "message": "Refund order {{ steps.fetch-refund-order.body.data.id }} sudah diproses.",
+                "metadata": {
+                  "status": "{{ steps.mark-refunded-after-approval.body.data.status }}"
+                }
+              },
+              "timeoutMs": 10000
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "Parallel Order Enrichment",
+      "description": "Workflow fan-out/fan-in: ambil beberapa order dan audit delay secara paralel, gabungkan ringkasan, lalu kirim notifikasi.",
+      "status": "active",
+      "changeNote": "Case study: parallel execution with join dependencies",
+      "definition": {
+        "name": "Parallel Order Enrichment",
+        "trigger": "manual",
+        "timeoutMs": 120000,
+        "retryPolicy": {
+          "maxAttempts": 1,
+          "backoff": "exponential"
+        },
+        "steps": [
+          {
+            "id": "load-primary-order",
+            "label": "Load primary order",
+            "type": "http",
+            "dependsOn": [],
+            "config": {
+              "method": "GET",
+              "url": "${APP_URL}/api/mock/orders/2002",
+              "headers": {},
+              "body": null,
+              "timeoutMs": 10000
+            }
+          },
+          {
+            "id": "load-secondary-order",
+            "label": "Load secondary order",
+            "type": "http",
+            "dependsOn": [],
+            "config": {
+              "method": "GET",
+              "url": "${APP_URL}/api/mock/orders/2004",
+              "headers": {},
+              "body": null,
+              "timeoutMs": 10000
+            }
+          },
+          {
+            "id": "audit-delay",
+            "label": "Audit delay",
+            "type": "delay",
+            "dependsOn": [],
+            "config": {
+              "durationMs": 750
+            }
+          },
+          {
+            "id": "merge-enrichment",
+            "label": "Merge enrichment payload",
+            "type": "script",
+            "dependsOn": ["load-primary-order", "load-secondary-order", "audit-delay"],
+            "config": {
+              "functionName": "mergePayload",
+              "input": {
+                "primaryOrderId": "{{ steps.load-primary-order.body.data.id }}",
+                "primaryStatus": "{{ steps.load-primary-order.body.data.status }}",
+                "secondaryOrderId": "{{ steps.load-secondary-order.body.data.id }}",
+                "secondaryStatus": "{{ steps.load-secondary-order.body.data.status }}",
+                "auditReady": true
+              }
+            }
+          },
+          {
+            "id": "notify-enrichment",
+            "label": "Notify enrichment result",
+            "type": "http",
+            "dependsOn": ["merge-enrichment"],
+            "config": {
+              "method": "POST",
+              "url": "${APP_URL}/api/mock/notifications",
+              "headers": {
+                "Content-Type": "application/json"
+              },
+              "body": {
+                "channel": "slack",
+                "recipient": "#workflow-enrichment",
+                "message": "Enrichment selesai untuk {{ steps.merge-enrichment.primaryOrderId }} dan {{ steps.merge-enrichment.secondaryOrderId }}.",
+                "metadata": {
+                  "payload": "{{ steps.merge-enrichment }}"
+                }
+              },
+              "timeoutMs": 10000
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "Dynamic HTTP Body Binding",
+      "description": "Workflow yang menekankan binding data dinamis dari output HTTP sebelumnya ke body HTTP berikutnya.",
+      "status": "active",
+      "changeNote": "Case study: dynamic data binding into HTTP body",
+      "definition": {
+        "name": "Dynamic HTTP Body Binding",
+        "trigger": "manual",
+        "timeoutMs": 90000,
+        "retryPolicy": {
+          "maxAttempts": 1,
+          "backoff": "exponential"
+        },
+        "steps": [
+          {
+            "id": "get-binding-order",
+            "label": "Get binding order",
+            "type": "http",
+            "dependsOn": [],
+            "config": {
+              "method": "GET",
+              "url": "${APP_URL}/api/mock/orders/3002",
+              "headers": {},
+              "body": null,
+              "timeoutMs": 10000
+            }
+          },
+          {
+            "id": "send-bound-notification",
+            "label": "Send bound notification",
+            "type": "http",
+            "dependsOn": ["get-binding-order"],
+            "config": {
+              "method": "POST",
+              "url": "${APP_URL}/api/mock/notifications",
+              "headers": {
+                "Content-Type": "application/json"
+              },
+              "body": {
+                "channel": "email",
+                "recipient": "{{ steps.get-binding-order.body.data.customer.email }}",
+                "message": "Halo {{ steps.get-binding-order.body.data.customer.name }}, order {{ steps.get-binding-order.body.data.id }} statusnya {{ steps.get-binding-order.body.data.status }}.",
+                "metadata": {
+                  "orderId": "{{ steps.get-binding-order.body.data.id }}",
+                  "total": "{{ steps.get-binding-order.body.data.total }}",
+                  "currency": "{{ steps.get-binding-order.body.data.currency }}",
+                  "firstSku": "{{ steps.get-binding-order.body.data.items.0.sku }}"
+                }
+              },
+              "timeoutMs": 10000
+            }
+          },
+          {
+            "id": "close-binding-case",
+            "label": "Close binding case",
+            "type": "script",
+            "dependsOn": ["send-bound-notification"],
+            "config": {
+              "functionName": "echoPayload",
+              "input": {
+                "notificationId": "{{ steps.send-bound-notification.body.data.id }}",
+                "recipient": "{{ steps.send-bound-notification.body.data.recipient }}",
+                "queuedAt": "{{ steps.send-bound-notification.body.data.queuedAt }}"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "Retry And Failure Analysis Sample",
+      "description": "Workflow yang sengaja gagal di step script untuk menguji retry, run failed state, log, dan panel AI failure analysis.",
+      "status": "active",
+      "changeNote": "Case study: intentional runtime failure",
+      "definition": {
+        "name": "Retry And Failure Analysis Sample",
+        "trigger": "manual",
+        "timeoutMs": 90000,
+        "retryPolicy": {
+          "maxAttempts": 2,
+          "backoff": "exponential"
+        },
+        "steps": [
+          {
+            "id": "fetch-failure-order",
+            "label": "Fetch order before failure",
+            "type": "http",
+            "dependsOn": [],
+            "config": {
+              "method": "GET",
+              "url": "${APP_URL}/api/mock/orders/4002",
+              "headers": {},
+              "body": null,
+              "timeoutMs": 10000
+            }
+          },
+          {
+            "id": "prepare-failure-context",
+            "label": "Prepare failure context",
+            "type": "script",
+            "dependsOn": ["fetch-failure-order"],
+            "config": {
+              "functionName": "echoPayload",
+              "input": {
+                "orderId": "{{ steps.fetch-failure-order.body.data.id }}",
+                "reason": "Next step intentionally uses an unregistered function."
+              }
+            }
+          },
+          {
+            "id": "run-unregistered-script",
+            "label": "Run unregistered script",
+            "type": "script",
+            "dependsOn": ["prepare-failure-context"],
+            "config": {
+              "functionName": "missingFunctionForFailureAnalysis",
+              "input": {
+                "orderId": "{{ steps.fetch-failure-order.body.data.id }}"
+              }
+            }
+          },
+          {
+            "id": "unreachable-notification",
+            "label": "Unreachable notification",
+            "type": "http",
+            "dependsOn": ["run-unregistered-script"],
+            "config": {
+              "method": "POST",
+              "url": "${APP_URL}/api/mock/notifications",
+              "headers": {
+                "Content-Type": "application/json"
+              },
+              "body": {
+                "channel": "email",
+                "recipient": "ops@example.test",
+                "message": "This message should not be sent because the previous script fails.",
+                "metadata": {
+                  "case": "failure-analysis"
+                }
+              },
+              "timeoutMs": 10000
+            }
+          }
+        ]
+      }
+    }
+  ]
+}
+
