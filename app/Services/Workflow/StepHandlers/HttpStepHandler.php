@@ -9,7 +9,7 @@ use RuntimeException;
 
 class HttpStepHandler implements StepHandler
 {
-    public function __construct(private readonly WorkflowContextResolver $resolver = new WorkflowContextResolver()) {}
+    public function __construct(private readonly WorkflowContextResolver $resolver = new WorkflowContextResolver) {}
 
     public function handle(array $step, array $context): array
     {

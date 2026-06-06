@@ -2,12 +2,12 @@
 
 namespace App\Services\Workflow;
 
+use App\Jobs\ExecuteWorkflowRunJob;
+use App\Jobs\ExecuteWorkflowStepJob;
 use App\Models\StepRun;
 use App\Models\Workflow;
 use App\Models\WorkflowApproval;
 use App\Models\WorkflowRun;
-use App\Jobs\ExecuteWorkflowRunJob;
-use App\Jobs\ExecuteWorkflowStepJob;
 use App\Services\Workflow\StepHandlers\ConditionStepHandler;
 use App\Services\Workflow\StepHandlers\DelayStepHandler;
 use App\Services\Workflow\StepHandlers\HttpStepHandler;
@@ -87,6 +87,7 @@ class WorkflowExecutionService
 
             if ($run->stepRuns->contains(fn (StepRun $stepRun) => $stepRun->status === 'failed')) {
                 $this->failRun($run, 'One or more workflow steps failed.');
+
                 return;
             }
 
@@ -101,6 +102,7 @@ class WorkflowExecutionService
 
             if ($run->stepRuns->every(fn (StepRun $stepRun) => in_array($stepRun->status, ['success', 'skipped'], true))) {
                 $this->finishRun($run);
+
                 return;
             }
 
@@ -136,6 +138,7 @@ class WorkflowExecutionService
 
         if (($step['type'] ?? null) === 'approval') {
             $this->createApproval($run, $stepRun, $step, $this->contextFor($run));
+
             return;
         }
 
@@ -368,10 +371,10 @@ class WorkflowExecutionService
     private function handlerFor(string $type): StepHandlers\StepHandler
     {
         return match ($type) {
-            'http' => new HttpStepHandler(),
-            'delay' => new DelayStepHandler(),
-            'condition' => new ConditionStepHandler(),
-            'script' => new ScriptStepHandler(),
+            'http' => new HttpStepHandler,
+            'delay' => new DelayStepHandler,
+            'condition' => new ConditionStepHandler,
+            'script' => new ScriptStepHandler,
             'approval' => throw new \LogicException('Approval step is handled by the execution coordinator.'),
         };
     }

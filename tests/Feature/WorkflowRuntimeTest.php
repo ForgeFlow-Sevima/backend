@@ -39,7 +39,7 @@ function runtimeWorkflow(array $definition): array
 }
 
 it('resolves dynamic binding templates from workflow context', function () {
-    $resolver = new WorkflowContextResolver();
+    $resolver = new WorkflowContextResolver;
 
     expect($resolver->resolveValue(['id' => '{{ steps.get-order.body.data.id }}'], [
         'steps' => ['get-order' => ['body' => ['data' => ['id' => 'ord-1']]]],

@@ -137,7 +137,7 @@ it('keeps ai analysis limited to failed or timed out runs', function () {
 
 it('builds evidence context from failed step, logs, and definition config', function () {
     [, $run] = aiFailureRun($this);
-    $context = (new AiFailureAnalysisGenerator())->buildContext($run->fresh());
+    $context = (new AiFailureAnalysisGenerator)->buildContext($run->fresh());
 
     expect($context['failedStep']['stepId'])->toBe('notify-customer')
         ->and($context['failedStep']['errorMessage'])->toBe('The channel field is required.')

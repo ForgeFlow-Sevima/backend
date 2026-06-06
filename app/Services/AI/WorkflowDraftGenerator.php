@@ -34,6 +34,7 @@ class WorkflowDraftGenerator
         try {
             $definition = $this->validator->validate($definition);
             $this->validateSemanticFit($boundedPrompt, $definition);
+
             return new WorkflowDraftGenerationResult($definition, $this->rawResponse($first, 'initial'), $this->usage($first), $truncated, 0);
         } catch (ValidationException $exception) {
             $repair = $this->promptAgent($agent, $this->buildRepairPrompt($boundedPrompt, $definition, $exception->errors()));
