@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\StoreMockNotificationRequest;
 use App\Http\Requests\Api\UpdateMockOrderStatusRequest;
 use App\Services\MockApi\MockApiService;
+use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 
 class MockApiController extends Controller
@@ -27,5 +28,14 @@ class MockApiController extends Controller
     public function updateOrderStatus(UpdateMockOrderStatusRequest $request, string $orderId): JsonResponse
     {
         return response()->json(['data' => $this->mockApi->updateOrderStatus($orderId, $request->validated())]);
+    }
+
+    public function checkTime(): JsonResponse
+    {
+        return response()->json([
+            'data' => [
+                'time' => Carbon::now()->format('Y-m-d H:i:s'),
+            ],
+        ]);
     }
 }

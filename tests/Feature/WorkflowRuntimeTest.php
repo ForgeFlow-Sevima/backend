@@ -8,6 +8,7 @@ use App\Models\Workflow;
 use App\Services\Workflow\ScheduledTriggerService;
 use App\Services\Workflow\WorkflowContextResolver;
 use App\Services\Workflow\WorkflowExecutionService;
+use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
 
@@ -133,4 +134,133 @@ it('creates scheduled runs for due scheduled triggers', function () {
 
     expect($runs)->toHaveCount(1)
         ->and($runs[0]->trigger_type)->toBe('scheduled');
+});
+
+it('does not create scheduled runs for inactive triggers', function () {
+    Queue::fake();
+    [$workflow, $user] = runtimeWorkflow([
+        'name' => 'Paused Scheduled Test',
+        'trigger' => 'scheduled',
+        'timeoutMs' => 60000,
+        'retryPolicy' => ['maxAttempts' => 1, 'backoff' => 'exponential'],
+        'steps' => [
+            ['id' => 'wait', 'label' => 'Wait', 'type' => 'delay', 'dependsOn' => [], 'config' => ['durationMs' => 1]],
+        ],
+    ]);
+
+    ScheduledTrigger::query()->create([
+        'tenant_id' => $workflow->tenant_id,
+        'workflow_id' => $workflow->id,
+        'created_by' => $user->id,
+        'name' => 'Paused every minute',
+        'cron_expression' => '* * * * *',
+        'timezone' => 'Asia/Jakarta',
+        'is_active' => false,
+        'next_run_at' => now()->subMinute(),
+    ]);
+
+    expect(app(ScheduledTriggerService::class)->runDue())->toHaveCount(0);
+});
+
+it('calculates next scheduled run in trigger timezone without shifting to previous day', function () {
+    CarbonImmutable::setTestNow(CarbonImmutable::parse('2026-06-07 03:19:30', 'Asia/Jakarta'));
+
+    try {
+        $service = app(ScheduledTriggerService::class);
+
+        expect($service->nextRunAt('* * * * *', 'Asia/Jakarta')->toIso8601String())
+            ->toBe('2026-06-07T03:20:00+07:00')
+            ->and($service->nextRunAt('*/5 * * * *', 'Asia/Jakarta')->toIso8601String())
+            ->toBe('2026-06-07T03:20:00+07:00')
+            ->and($service->nextRunAt('20 3 * * *', 'Asia/Jakarta')->toIso8601String())
+            ->toBe('2026-06-07T03:20:00+07:00');
+    } finally {
+        CarbonImmutable::setTestNow();
+    }
+});
+
+it('moves fixed daily cron to tomorrow when todays time has passed', function () {
+    CarbonImmutable::setTestNow(CarbonImmutable::parse('2026-06-07 03:21:00', 'Asia/Jakarta'));
+
+    try {
+        expect(app(ScheduledTriggerService::class)->nextRunAt('20 3 * * *', 'Asia/Jakarta')->toIso8601String())
+            ->toBe('2026-06-08T03:20:00+07:00');
+    } finally {
+        CarbonImmutable::setTestNow();
+    }
+});
+
+it('rejects invalid scheduled trigger cron expression and timezone', function () {
+    [$workflow, $user] = runtimeWorkflow([
+        'name' => 'Scheduled Validation Test',
+        'trigger' => 'scheduled',
+        'timeoutMs' => 60000,
+        'retryPolicy' => ['maxAttempts' => 1, 'backoff' => 'exponential'],
+        'steps' => [
+            ['id' => 'wait', 'label' => 'Wait', 'type' => 'delay', 'dependsOn' => [], 'config' => ['durationMs' => 1]],
+        ],
+    ]);
+    $token = $this->postJson('/api/v1/auth/login', ['email' => $user->email, 'password' => 'password'])->assertOk()->json('data.token');
+
+    $this->withToken($token)
+        ->postJson('/api/v1/scheduled-triggers', [
+            'workflowId' => $workflow->id,
+            'name' => 'Invalid schedule',
+            'cronExpression' => 'bad cron',
+            'timezone' => 'Asia/Jakarta',
+        ])
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors(['cronExpression']);
+
+    $this->withToken($token)
+        ->postJson('/api/v1/scheduled-triggers', [
+            'workflowId' => $workflow->id,
+            'name' => 'Invalid timezone',
+            'cronExpression' => '* * * * *',
+            'timezone' => 'Asia/Jakartaaa',
+        ])
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors(['timezone']);
+});
+
+it('lists pauses and resumes scheduled triggers for a workflow', function () {
+    [$workflow, $user] = runtimeWorkflow([
+        'name' => 'Scheduled Control Test',
+        'trigger' => 'scheduled',
+        'timeoutMs' => 60000,
+        'retryPolicy' => ['maxAttempts' => 1, 'backoff' => 'exponential'],
+        'steps' => [
+            ['id' => 'wait', 'label' => 'Wait', 'type' => 'delay', 'dependsOn' => [], 'config' => ['durationMs' => 1]],
+        ],
+    ]);
+    $token = $this->postJson('/api/v1/auth/login', ['email' => $user->email, 'password' => 'password'])->assertOk()->json('data.token');
+
+    $triggerId = $this->withToken($token)
+        ->postJson('/api/v1/scheduled-triggers', [
+            'workflowId' => $workflow->id,
+            'name' => 'Every minute',
+            'cronExpression' => '* * * * *',
+            'timezone' => 'Asia/Jakarta',
+        ])
+        ->assertCreated()
+        ->json('data.id');
+
+    $this->withToken($token)
+        ->getJson("/api/v1/workflows/{$workflow->id}/scheduled-triggers")
+        ->assertOk()
+        ->assertJsonPath('data.0.id', $triggerId);
+
+    $this->withToken($token)
+        ->patchJson("/api/v1/scheduled-triggers/{$triggerId}", ['isActive' => false])
+        ->assertOk()
+        ->assertJsonPath('data.isActive', false)
+        ->assertJsonPath('data.nextRunAt', null);
+
+    $resumeResponse = $this->withToken($token)
+        ->patchJson("/api/v1/scheduled-triggers/{$triggerId}", ['isActive' => true])
+        ->assertOk()
+        ->assertJsonPath('data.isActive', true);
+
+    expect($resumeResponse->json('data.nextRunAt'))->not->toBeNull()
+        ->and(ScheduledTrigger::query()->findOrFail($triggerId)->next_run_at)->not->toBeNull();
 });
