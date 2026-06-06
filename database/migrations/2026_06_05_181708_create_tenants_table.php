@@ -11,20 +11,14 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('users', function (Blueprint $table) {
+        Schema::create('tenants', function (Blueprint $table) {
             $table->uuid('id')->primary();
-            $table->uuid('tenant_id')->index();
             $table->string('name', 150);
-            $table->string('email', 150);
-            $table->timestamp('email_verified_at')->nullable();
-            $table->string('password');
-            $table->enum('role', ['admin', 'editor', 'viewer'])->default('viewer')->index();
-            $table->rememberToken();
+            $table->string('slug', 150)->unique();
+            $table->enum('status', ['active', 'inactive', 'suspended'])->default('active');
             $table->timestamp('created_at')->useCurrent();
             $table->timestamp('updated_at')->nullable();
             $table->softDeletes();
-
-            $table->unique(['tenant_id', 'email']);
         });
     }
 
@@ -33,6 +27,6 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('users');
+        Schema::dropIfExists('tenants');
     }
 };
