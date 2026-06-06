@@ -12,13 +12,18 @@ use App\Models\WorkflowRun;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class RunController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
-        $perPage = min((int) $request->integer('perPage', 15), 100);
+        $request->validate([
+            'page' => ['nullable', 'integer', 'min:1'],
+            'perPage' => ['nullable', 'integer', 'min:1', 'max:100'],
+        ]);
+        $perPage = min(max((int) $request->integer('perPage', 15), 1), 100);
         $query = WorkflowRun::query()
             ->with(['workflow', 'stepRuns'])
             ->where('tenant_id', $request->user()->tenant_id)
@@ -56,7 +61,7 @@ class RunController extends Controller
 
         return response()->json([
             'data' => WorkflowRunResource::collection($page->items()),
-            'meta' => ['page' => $page->currentPage(), 'perPage' => $page->perPage(), 'total' => $page->total()],
+            'meta' => $this->paginationMeta($page),
         ]);
     }
 
@@ -166,5 +171,17 @@ class RunController extends Controller
     private function abortUnlessTenant(Request $request, WorkflowRun $run): void
     {
         abort_unless($run->tenant_id === $request->user()->tenant_id, 404);
+    }
+
+    private function paginationMeta(LengthAwarePaginator $page): array
+    {
+        return [
+            'page' => $page->currentPage(),
+            'perPage' => $page->perPage(),
+            'total' => $page->total(),
+            'lastPage' => $page->lastPage(),
+            'from' => $page->firstItem(),
+            'to' => $page->lastItem(),
+        ];
     }
 }

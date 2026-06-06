@@ -6,6 +6,7 @@ use App\Jobs\ExecuteWorkflowRunJob;
 use App\Models\ScheduledTrigger;
 use App\Models\WorkflowRun;
 use Carbon\CarbonImmutable;
+use Cron\CronExpression;
 
 class ScheduledTriggerService
 {
@@ -55,20 +56,9 @@ class ScheduledTriggerService
     {
         $now = CarbonImmutable::now($timezone)->startOfMinute();
 
-        if ($cron === '* * * * *') {
-            return $now->addMinute()->utc();
-        }
+        $next = CronExpression::factory($cron)->getNextRunDate($now, 0, false, $timezone);
 
-        if (preg_match('/^\*\/(\d+) \* \* \* \*$/', $cron, $matches)) {
-            return $now->addMinutes(max(1, (int) $matches[1]))->utc();
-        }
-
-        if (preg_match('/^(\d{1,2}) (\d{1,2}) \* \* \*$/', $cron, $matches)) {
-            $candidate = $now->setTime((int) $matches[2], (int) $matches[1]);
-            return ($candidate->greaterThan($now) ? $candidate : $candidate->addDay())->utc();
-        }
-
-        return $now->addMinute()->utc();
+        return CarbonImmutable::instance($next)->setTimezone($timezone);
     }
 
     private function isRunnable(ScheduledTrigger $trigger): bool

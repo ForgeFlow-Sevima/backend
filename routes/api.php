@@ -19,22 +19,26 @@ Route::prefix('mock')->group(function (): void {
     Route::get('orders/{orderId}', [MockApiController::class, 'showOrder']);
     Route::post('notifications', [MockApiController::class, 'storeNotification']);
     Route::post('orders/{orderId}/status', [MockApiController::class, 'updateOrderStatus']);
+    Route::get('time', [MockApiController::class, 'checkTime']);
 });
 
 Route::post('webhooks/workflows/{workflow}', [WebhookIncomingController::class, 'store']);
 
 Route::prefix('v1')->group(function (): void {
     Route::post('auth/login', [AuthController::class, 'login'])->middleware('throttle:10,1');
+    Route::post('auth/register', [AuthController::class, 'register'])->middleware('throttle:10,1');
 
     Route::middleware('api.token')->group(function (): void {
         Route::get('me', [AuthController::class, 'me']);
         Route::post('auth/logout', [AuthController::class, 'logout']);
 
         Route::get('dashboard/summary', [DashboardController::class, 'summary']);
+        Route::get('dashboard/events', [DashboardController::class, 'events']);
 
         Route::get('workflows', [WorkflowController::class, 'index']);
         Route::post('workflows', [WorkflowController::class, 'store'])->middleware('role:admin,editor');
         Route::post('workflows/validate', [WorkflowController::class, 'validateDefinition'])->middleware('role:admin,editor');
+        Route::get('workflows/{workflow}/scheduled-triggers', [ScheduledTriggerController::class, 'indexForWorkflow']);
         Route::get('workflows/{workflow}', [WorkflowController::class, 'show']);
         Route::patch('workflows/{workflow}', [WorkflowController::class, 'update'])->middleware('role:admin,editor');
         Route::patch('workflows/{workflow}/archive', [WorkflowController::class, 'archive'])->middleware('role:admin,editor');
@@ -55,6 +59,7 @@ Route::prefix('v1')->group(function (): void {
 
         Route::post('ai/workflow-drafts', [AiWorkflowDraftController::class, 'store'])->middleware('role:admin,editor');
 
+        Route::get('scheduled-triggers', [ScheduledTriggerController::class, 'index']);
         Route::post('scheduled-triggers', [ScheduledTriggerController::class, 'store'])->middleware('role:admin,editor');
         Route::patch('scheduled-triggers/{trigger}', [ScheduledTriggerController::class, 'update'])->middleware('role:admin,editor');
         Route::post('scheduled-triggers/{trigger}/run-now', [ScheduledTriggerController::class, 'runNow'])->middleware('role:admin,editor');

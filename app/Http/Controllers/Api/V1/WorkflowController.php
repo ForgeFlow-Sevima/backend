@@ -17,6 +17,7 @@ use App\Services\Workflow\WorkflowExecutionService;
 use App\Services\Workflow\WorkflowVersionService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Pagination\LengthAwarePaginator;
 
 class WorkflowController extends Controller
 {
@@ -29,7 +30,11 @@ class WorkflowController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        $perPage = min((int) $request->integer('perPage', 15), 100);
+        $request->validate([
+            'page' => ['nullable', 'integer', 'min:1'],
+            'perPage' => ['nullable', 'integer', 'min:1', 'max:100'],
+        ]);
+        $perPage = min(max((int) $request->integer('perPage', 15), 1), 100);
         $query = Workflow::query()
             ->with(['currentVersion.workflow', 'currentVersion.creator', 'runs' => fn ($query) => $query->latest()->limit(50)])
             ->where('tenant_id', $request->user()->tenant_id)
@@ -54,7 +59,7 @@ class WorkflowController extends Controller
 
         return response()->json([
             'data' => WorkflowResource::collection($page->items()),
-            'meta' => ['page' => $page->currentPage(), 'perPage' => $page->perPage(), 'total' => $page->total()],
+            'meta' => $this->paginationMeta($page),
         ]);
     }
 
@@ -126,6 +131,17 @@ class WorkflowController extends Controller
     {
         abort_unless($workflow->tenant_id === $request->user()->tenant_id, 404);
     }
-}
 
+    private function paginationMeta(LengthAwarePaginator $page): array
+    {
+        return [
+            'page' => $page->currentPage(),
+            'perPage' => $page->perPage(),
+            'total' => $page->total(),
+            'lastPage' => $page->lastPage(),
+            'from' => $page->firstItem(),
+            'to' => $page->lastItem(),
+        ];
+    }
+}
 

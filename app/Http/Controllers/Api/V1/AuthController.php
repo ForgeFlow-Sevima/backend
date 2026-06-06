@@ -4,13 +4,17 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\V1\LoginRequest;
+use App\Http\Requests\Api\V1\RegisterRequest;
 use App\Http\Resources\TenantResource;
 use App\Http\Resources\UserResource;
+use App\Models\Tenant;
 use App\Models\User;
 use App\Services\Auth\JwtService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
 
 class AuthController extends Controller
 {
@@ -27,26 +31,30 @@ class AuthController extends Controller
             return response()->json(['message' => 'Tenant is not active.'], 403);
         }
 
-        $issued = $jwt->issue([
-            'sub' => $user->id,
-            'tenant_id' => $user->tenant_id,
-            'role' => $user->role,
-        ]);
+        return $this->issueSession($user, $jwt);
+    }
 
-        $user->personalAccessTokens()->create([
-            'name' => 'frontend-jwt',
-            'token' => hash('sha256', $issued['jti']),
-            'abilities' => '*',
-            'expires_at' => now()->setTimestamp($issued['expiresAt']),
-        ]);
+    public function register(RegisterRequest $request, JwtService $jwt): JsonResponse
+    {
+        $payload = $request->validated();
 
-        return response()->json([
-            'data' => [
-                'token' => $issued['token'],
-                'user' => new UserResource($user),
-                'tenant' => new TenantResource($user->tenant),
-            ],
-        ]);
+        $user = DB::transaction(function () use ($payload): User {
+            $tenant = Tenant::query()->create([
+                'name' => $payload['tenantName'],
+                'slug' => $this->uniqueTenantSlug($payload['tenantName']),
+                'status' => 'active',
+            ]);
+
+            return User::query()->create([
+                'tenant_id' => $tenant->id,
+                'name' => $payload['name'],
+                'email' => $payload['email'],
+                'password' => $payload['password'],
+                'role' => 'admin',
+            ])->load('tenant');
+        });
+
+        return $this->issueSession($user, $jwt);
     }
 
     public function me(Request $request): JsonResponse
@@ -76,5 +84,45 @@ class AuthController extends Controller
             'editor' => ['dashboard:read', 'workflows:write', 'runs:write', 'ai:write'],
             default => ['dashboard:read', 'workflows:read', 'runs:read', 'logs:read'],
         };
+    }
+
+    private function issueSession(User $user, JwtService $jwt): JsonResponse
+    {
+        $user->loadMissing('tenant');
+
+        $issued = $jwt->issue([
+            'sub' => $user->id,
+            'tenant_id' => $user->tenant_id,
+            'role' => $user->role,
+        ]);
+
+        $user->personalAccessTokens()->create([
+            'name' => 'frontend-jwt',
+            'token' => hash('sha256', $issued['jti']),
+            'abilities' => '*',
+            'expires_at' => now()->setTimestamp($issued['expiresAt']),
+        ]);
+
+        return response()->json([
+            'data' => [
+                'token' => $issued['token'],
+                'user' => new UserResource($user),
+                'tenant' => new TenantResource($user->tenant),
+            ],
+        ]);
+    }
+
+    private function uniqueTenantSlug(string $name): string
+    {
+        $baseSlug = Str::slug($name) ?: 'tenant';
+        $slug = $baseSlug;
+        $suffix = 2;
+
+        while (Tenant::query()->where('slug', $slug)->exists()) {
+            $slug = "{$baseSlug}-{$suffix}";
+            $suffix++;
+        }
+
+        return $slug;
     }
 }
