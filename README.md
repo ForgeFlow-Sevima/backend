@@ -7,7 +7,7 @@
 
   #### b. Tech Stack
 
-  - Laravel 13 (PHP 8.3+)
+  - Laravel 13 (PHP 8.4.1+)
   - PostgreSQL 16+
   - Laravel Queue (database driver)
   - Laravel Scheduler
@@ -58,7 +58,7 @@
 
   Prerequisites:
 
-  PHP 8.3+
+  PHP 8.4.1+
   Composer 2.x
   PostgreSQL 16+
 
