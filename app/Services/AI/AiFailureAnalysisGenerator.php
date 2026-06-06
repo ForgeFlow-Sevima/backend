@@ -32,7 +32,7 @@ class AiFailureAnalysisGenerator
 
         $context = $this->buildContext($run);
         $prompt = $this->buildPrompt($context);
-        $agent = new FailureAnalysisAgent();
+        $agent = new FailureAnalysisAgent;
         $response = $this->promptAgent($agent, $prompt);
         $analysis = $this->normalizeAnalysis($response->toArray(), $context);
 

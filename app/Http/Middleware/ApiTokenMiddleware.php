@@ -8,7 +8,6 @@ use App\Services\Auth\JwtService;
 use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use InvalidArgumentException;
 use Symfony\Component\HttpFoundation\Response;
 
 class ApiTokenMiddleware
@@ -56,4 +55,3 @@ class ApiTokenMiddleware
         return $next($request);
     }
 }
-

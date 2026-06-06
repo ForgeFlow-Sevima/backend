@@ -1,8 +1,8 @@
 <?php
 
-use Illuminate\Support\Facades\Cache;
 use App\Services\Workflow\StepHandlers\HttpStepHandler;
 use App\Support\MockApiUrls;
+use Illuminate\Support\Facades\Cache;
 
 it('serves a deterministic mock order', function () {
     $this->getJson('/api/mock/orders/1002')

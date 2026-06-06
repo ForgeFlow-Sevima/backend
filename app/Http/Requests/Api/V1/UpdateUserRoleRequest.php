@@ -19,4 +19,3 @@ class UpdateUserRoleRequest extends FormRequest
         ];
     }
 }
-

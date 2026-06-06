@@ -92,7 +92,7 @@ it('records failed workflow draft generation validation errors', function () {
 it('fills missing type configs before workflow validation', function () {
     config()->set('app.url', 'http://backend.test');
 
-    $generator = new WorkflowDraftGenerator(new WorkflowDefinitionValidator());
+    $generator = new WorkflowDraftGenerator(new WorkflowDefinitionValidator);
     $method = new ReflectionMethod($generator, 'normalize');
 
     $definition = $method->invoke($generator, [
@@ -122,11 +122,11 @@ it('fills missing type configs before workflow validation', function () {
         ->and($definition['steps'][0]['config']['method'])->toBe('GET')
         ->and($definition['steps'][1]['config']['functionName'])->toBe('echoPayload');
 
-    expect(fn () => (new WorkflowDefinitionValidator())->validate($definition))->not->toThrow(ValidationException::class);
+    expect(fn () => (new WorkflowDefinitionValidator)->validate($definition))->not->toThrow(ValidationException::class);
 });
 
 it('rejects semantically incomplete parallel notification drafts', function () {
-    $generator = new WorkflowDraftGenerator(new WorkflowDefinitionValidator());
+    $generator = new WorkflowDraftGenerator(new WorkflowDefinitionValidator);
     $method = new ReflectionMethod($generator, 'validateSemanticFit');
 
     $definition = [
@@ -152,7 +152,7 @@ it('rejects semantically incomplete parallel notification drafts', function () {
 it('builds a complete fallback for parallel customer notifications', function () {
     config()->set('app.url', 'http://backend.test');
 
-    $generator = new WorkflowDraftGenerator(new WorkflowDefinitionValidator());
+    $generator = new WorkflowDraftGenerator(new WorkflowDefinitionValidator);
     $method = new ReflectionMethod($generator, 'fallbackDefinition');
 
     $definition = $method->invoke($generator, 'Create a parallel customer notification workflow with email, SMS, and Slack notifications.');
@@ -164,5 +164,5 @@ it('builds a complete fallback for parallel customer notifications', function ()
         ->and($steps->firstWhere('id', 'notify-slack')['config']['body']['channel'])->toBe('slack')
         ->and($steps->firstWhere('id', 'summarize-notifications')['dependsOn'])->toBe(['notify-email', 'notify-sms', 'notify-slack']);
 
-    expect(fn () => (new WorkflowDefinitionValidator())->validate($definition))->not->toThrow(ValidationException::class);
+    expect(fn () => (new WorkflowDefinitionValidator)->validate($definition))->not->toThrow(ValidationException::class);
 });

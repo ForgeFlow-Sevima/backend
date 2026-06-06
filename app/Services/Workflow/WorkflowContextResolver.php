@@ -12,11 +12,13 @@ class WorkflowContextResolver
         foreach (explode('.', $path) as $segment) {
             if (is_array($current) && array_key_exists($segment, $current)) {
                 $current = $current[$segment];
+
                 continue;
             }
 
             if (is_array($current) && ctype_digit($segment) && array_key_exists((int) $segment, $current)) {
                 $current = $current[(int) $segment];
+
                 continue;
             }
 
