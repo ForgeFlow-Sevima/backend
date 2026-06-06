@@ -11,20 +11,22 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('users', function (Blueprint $table) {
+        Schema::create('scheduled_triggers', function (Blueprint $table) {
             $table->uuid('id')->primary();
             $table->uuid('tenant_id')->index();
+            $table->uuid('workflow_id')->index();
+            $table->uuid('created_by')->nullable()->index();
             $table->string('name', 150);
-            $table->string('email', 150);
-            $table->timestamp('email_verified_at')->nullable();
-            $table->string('password');
-            $table->enum('role', ['admin', 'editor', 'viewer'])->default('viewer')->index();
-            $table->rememberToken();
+            $table->string('cron_expression', 100);
+            $table->string('timezone', 100)->default('Asia/Jakarta');
+            $table->boolean('is_active')->default(true)->index();
+            $table->timestamp('last_run_at')->nullable();
+            $table->timestamp('next_run_at')->nullable()->index();
             $table->timestamp('created_at')->useCurrent();
             $table->timestamp('updated_at')->nullable();
             $table->softDeletes();
 
-            $table->unique(['tenant_id', 'email']);
+            $table->index(['tenant_id', 'is_active', 'next_run_at']);
         });
     }
 
@@ -33,6 +35,6 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('users');
+        Schema::dropIfExists('scheduled_triggers');
     }
 };

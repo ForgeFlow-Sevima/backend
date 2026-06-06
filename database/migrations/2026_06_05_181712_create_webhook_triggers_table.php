@@ -11,20 +11,21 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('users', function (Blueprint $table) {
+        Schema::create('webhook_triggers', function (Blueprint $table) {
             $table->uuid('id')->primary();
             $table->uuid('tenant_id')->index();
+            $table->uuid('workflow_id')->index();
+            $table->uuid('created_by')->nullable()->index();
             $table->string('name', 150);
-            $table->string('email', 150);
-            $table->timestamp('email_verified_at')->nullable();
-            $table->string('password');
-            $table->enum('role', ['admin', 'editor', 'viewer'])->default('viewer')->index();
-            $table->rememberToken();
+            $table->string('secret_hash');
+            $table->boolean('is_active')->default(true);
+            $table->timestamp('last_triggered_at')->nullable();
             $table->timestamp('created_at')->useCurrent();
             $table->timestamp('updated_at')->nullable();
             $table->softDeletes();
 
-            $table->unique(['tenant_id', 'email']);
+            $table->index('secret_hash');
+            $table->index(['tenant_id', 'workflow_id']);
         });
     }
 
@@ -33,6 +34,6 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('users');
+        Schema::dropIfExists('webhook_triggers');
     }
 };
