@@ -6,6 +6,7 @@ on:
       - master
       - forgeflow-mvp-backend
       - ci/github-actions-backend
+      - feature/final-review-backend
   pull_request:
     branches:
       - master
