@@ -15,12 +15,7 @@ class AiFailureAnalysisResource extends JsonResource
             'rootCause' => $this->root_cause,
             'suggestedFix' => $this->suggested_fix,
             'affectedStepId' => $this->whenLoaded('stepRun', fn () => $this->stepRun?->step_id),
-            'confidence' => match ($this->confidence) {
-                'high' => 0.9,
-                'medium' => 0.65,
-                'low' => 0.35,
-                default => 0,
-            },
+            'confidence' => $this->confidence,
             'category' => $this->category,
             'retryRecommended' => (bool) $this->retry_recommended,
             'createdAt' => $this->created_at?->toIso8601String(),
