@@ -53,6 +53,13 @@ php artisan migrate --seed
 php artisan serve
 ```
 
+Demo account after running the database seeders:
+
+```text
+Email: admin@flowforge.test
+Password: password
+```
+
 Run the queue worker in another terminal:
 
 ```bash
