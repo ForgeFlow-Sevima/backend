@@ -133,3 +133,29 @@ it('rejects invalid pagination parameters', function () {
         ->assertUnprocessable()
         ->assertJsonValidationErrors(['perPage']);
 });
+
+it('rate limits required list endpoints and auth endpoints', function () {
+    $token = seededToken($this);
+
+    foreach (['/api/v1/workflows', '/api/v1/runs', '/api/v1/logs', '/api/v1/users'] as $endpoint) {
+        $this->withToken($token)
+            ->getJson($endpoint)
+            ->assertOk()
+            ->assertHeader('X-RateLimit-Limit', '60');
+    }
+
+    $this->postJson('/api/v1/auth/login', [
+        'email' => 'admin@flowforge.test',
+        'password' => 'password',
+    ])->assertOk()
+        ->assertHeader('X-RateLimit-Limit', '10');
+
+    $this->postJson('/api/v1/auth/register', [
+        'tenantName' => 'Rate Limited Tenant',
+        'name' => 'Rate Limited Admin',
+        'email' => 'rate-limit-admin@example.test',
+        'password' => 'password123',
+        'passwordConfirmation' => 'password123',
+    ])->assertOk()
+        ->assertHeader('X-RateLimit-Limit', '10');
+});

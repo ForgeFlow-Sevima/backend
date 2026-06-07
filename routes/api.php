@@ -35,7 +35,7 @@ Route::prefix('v1')->group(function (): void {
         Route::get('dashboard/summary', [DashboardController::class, 'summary']);
         Route::get('dashboard/events', [DashboardController::class, 'events']);
 
-        Route::get('workflows', [WorkflowController::class, 'index']);
+        Route::get('workflows', [WorkflowController::class, 'index'])->middleware('throttle:60,1');
         Route::post('workflows', [WorkflowController::class, 'store'])->middleware('role:admin,editor');
         Route::post('workflows/validate', [WorkflowController::class, 'validateDefinition'])->middleware('role:admin,editor');
         Route::get('workflows/{workflow}/scheduled-triggers', [ScheduledTriggerController::class, 'indexForWorkflow']);
@@ -46,8 +46,8 @@ Route::prefix('v1')->group(function (): void {
         Route::get('workflows/{workflow}/versions', [WorkflowVersionController::class, 'index']);
         Route::post('workflows/{workflow}/versions/{version}/rollback', [WorkflowVersionController::class, 'rollback'])->middleware('role:admin,editor');
 
-        Route::get('runs', [RunController::class, 'index']);
-        Route::get('logs', [LogController::class, 'index']);
+        Route::get('runs', [RunController::class, 'index'])->middleware('throttle:60,1');
+        Route::get('logs', [LogController::class, 'index'])->middleware('throttle:60,1');
         Route::get('runs/{run}', [RunController::class, 'show']);
         Route::get('runs/{run}/logs', [RunController::class, 'logs']);
         Route::get('runs/{run}/events', [RunController::class, 'events']);
@@ -64,7 +64,7 @@ Route::prefix('v1')->group(function (): void {
         Route::patch('scheduled-triggers/{trigger}', [ScheduledTriggerController::class, 'update'])->middleware('role:admin,editor');
         Route::post('scheduled-triggers/{trigger}/run-now', [ScheduledTriggerController::class, 'runNow'])->middleware('role:admin,editor');
 
-        Route::get('users', [UserController::class, 'index'])->middleware('role:admin');
+        Route::get('users', [UserController::class, 'index'])->middleware(['role:admin', 'throttle:60,1']);
         Route::post('users', [UserController::class, 'store'])->middleware('role:admin');
         Route::patch('users/{user}/role', [UserController::class, 'updateRole'])->middleware('role:admin');
     });
