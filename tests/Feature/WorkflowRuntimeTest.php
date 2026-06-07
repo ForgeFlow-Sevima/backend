@@ -264,3 +264,60 @@ it('lists pauses and resumes scheduled triggers for a workflow', function () {
     expect($resumeResponse->json('data.nextRunAt'))->not->toBeNull()
         ->and(ScheduledTrigger::query()->findOrFail($triggerId)->next_run_at)->not->toBeNull();
 });
+
+it('filters scheduled triggers by boolean query string values', function () {
+    [$workflow, $user] = runtimeWorkflow([
+        'name' => 'Scheduled Filter Test',
+        'trigger' => 'scheduled',
+        'timeoutMs' => 60000,
+        'retryPolicy' => ['maxAttempts' => 1, 'backoff' => 'exponential'],
+        'steps' => [
+            ['id' => 'wait', 'label' => 'Wait', 'type' => 'delay', 'dependsOn' => [], 'config' => ['durationMs' => 1]],
+        ],
+    ]);
+    $token = $this->postJson('/api/v1/auth/login', ['email' => $user->email, 'password' => 'password'])->assertOk()->json('data.token');
+
+    $activeTrigger = ScheduledTrigger::query()->create([
+        'tenant_id' => $workflow->tenant_id,
+        'workflow_id' => $workflow->id,
+        'created_by' => $user->id,
+        'name' => 'Active schedule',
+        'cron_expression' => '* * * * *',
+        'timezone' => 'Asia/Jakarta',
+        'is_active' => true,
+        'next_run_at' => now()->addMinute(),
+    ]);
+    $inactiveTrigger = ScheduledTrigger::query()->create([
+        'tenant_id' => $workflow->tenant_id,
+        'workflow_id' => $workflow->id,
+        'created_by' => $user->id,
+        'name' => 'Inactive schedule',
+        'cron_expression' => '* * * * *',
+        'timezone' => 'Asia/Jakarta',
+        'is_active' => false,
+        'next_run_at' => null,
+    ]);
+
+    foreach (['true', '1'] as $value) {
+        $ids = collect($this->withToken($token)->getJson("/api/v1/scheduled-triggers?active={$value}")->assertOk()->json('data'))->pluck('id');
+
+        expect($ids)->toContain($activeTrigger->id)
+            ->and($ids)->not->toContain($inactiveTrigger->id);
+    }
+
+    foreach (['false', '0'] as $value) {
+        $ids = collect($this->withToken($token)->getJson("/api/v1/scheduled-triggers?active={$value}")->assertOk()->json('data'))->pluck('id');
+
+        expect($ids)->toContain($inactiveTrigger->id)
+            ->and($ids)->not->toContain($activeTrigger->id);
+    }
+
+    $allIds = collect($this->withToken($token)->getJson('/api/v1/scheduled-triggers')->assertOk()->json('data'))->pluck('id');
+    expect($allIds)->toContain($activeTrigger->id)
+        ->and($allIds)->toContain($inactiveTrigger->id);
+
+    $this->withToken($token)
+        ->getJson('/api/v1/scheduled-triggers?active=invalid')
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors(['active']);
+});

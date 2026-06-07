@@ -22,16 +22,18 @@ class ScheduledTriggerController extends Controller
     public function index(Request $request): JsonResponse
     {
         $request->validate([
-            'active' => ['nullable', 'boolean'],
+            'active' => ['nullable', $this->booleanQueryRule()],
         ]);
+
+        $active = $this->booleanQuery($request, 'active');
 
         $query = ScheduledTrigger::query()
             ->with(['workflow', 'workflow.runs' => fn ($query) => $query->where('trigger_type', 'scheduled')->latest()->limit(1)])
             ->where('tenant_id', $request->user()->tenant_id)
             ->latest();
 
-        if ($request->boolean('active')) {
-            $query->where('is_active', true);
+        if ($active !== null) {
+            $query->where('is_active', $active);
         }
 
         $triggers = $query->get();
@@ -149,5 +151,48 @@ class ScheduledTriggerController extends Controller
                 $fail('The '.$attribute.' field must be a valid cron expression.');
             }
         };
+    }
+
+    private function booleanQueryRule(): \Closure
+    {
+        return function (string $attribute, mixed $value, \Closure $fail): void {
+            if ($this->parseBooleanQuery($value) === null) {
+                $fail('The '.$attribute.' field must be true or false.');
+            }
+        };
+    }
+
+    private function booleanQuery(Request $request, string $key): ?bool
+    {
+        if (! $request->query->has($key)) {
+            return null;
+        }
+
+        return $this->parseBooleanQuery($request->query($key));
+    }
+
+    private function parseBooleanQuery(mixed $value): ?bool
+    {
+        if (is_bool($value)) {
+            return $value;
+        }
+
+        if ($value === 1 || $value === '1') {
+            return true;
+        }
+
+        if ($value === 0 || $value === '0') {
+            return false;
+        }
+
+        if (is_string($value)) {
+            return match (strtolower($value)) {
+                'true' => true,
+                'false' => false,
+                default => null,
+            };
+        }
+
+        return null;
     }
 }
