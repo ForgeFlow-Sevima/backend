@@ -1,252 +1,219 @@
-  #### a. Project Overview
+# ForgeFlow Backend
 
-  - FlowForge Backend - Real-time multi-tenant workflow orchestration engine
-  - Workflow engine dengan DAG execution, retry/backoff, timeout handling
-  - Multi-tenant isolation dengan JWT authentication + RBAC
-  - AI-powered workflow builder dan failure analysis
+ForgeFlow Backend is a Laravel API for multi-tenant workflow orchestration. It manages workflow definitions, versioning, DAG execution, scheduled and webhook triggers, approval steps, execution logs, and AI-assisted workflow generation/failure analysis.
 
-  #### b. Tech Stack
+## Current Branches
 
-  - Laravel 13 (PHP 8.4.1+)
-  - PostgreSQL 16+
-  - Laravel Queue (database driver)
-  - Laravel Scheduler
-  - Laravel AI SDK (Gemini 2.5 Flash)
-  - PHPUnit for testing
+Use the existing branches below for the current project history:
 
-  #### c. Architecture Overview
+```bash
+git switch master
+git switch ci/github-actions-backend
+git switch chore/docker-backend
+git switch forgeflow-mvp-backend
+```
 
-  Core Components:
+## Tech Stack
 
-  1. REST API Layer
-      - JWT authentication dengan personal access tokens
-      - Tenant isolation middleware
-      - RBAC: Admin, Editor, Viewer roles
-      - Input validation & sanitization
+- PHP `^8.4.1`
+- Laravel `13.x`
+- PostgreSQL 16+
+- Laravel database queue driver
+- Laravel scheduler / custom workflow scheduler command
+- Laravel AI SDK with Gemini 2.5 Flash
+- Laravel Sanctum package plus custom bearer token validation
+- Pest + Laravel test runner
+- Laravel Pint for code style
+- Docker support through the infra repository
 
-  2. Workflow Engine
-      - DAG validator (topological sort, cycle detection)
-      - Workflow executor dengan dependency resolution
-      - Step types: HTTP, script, delay, condition, approval
-      - Retry policy: exponential backoff, max attempts
-      - Global timeout handling
+## Architecture
 
-  3. Queue Worker
-      - Async step execution
-      - Parallel execution untuk independent steps
-      - Database queue driver
+- **API layer**: versioned REST API under `/api/v1`, bearer-token auth, tenant scoping, RBAC permissions, validation requests, and JSON resources.
+- **Workflow engine**: validates workflow JSON, performs DAG dependency resolution, runs HTTP/script/delay/condition/approval steps, supports retries, branching, parallel-ready independent steps, and approval resume/reject handling.
+- **Runtime workers**: workflow runs are dispatched to the queue; scheduled triggers are processed by `php artisan workflow:scheduler:run` or the Docker scheduler loop.
+- **Monitoring**: run detail uses SSE at `/api/v1/runs/{run}/events`; list pages use normal paginated APIs.
+- **AI services**: `/api/v1/ai/workflow-drafts` generates validated workflow JSON; `/api/v1/runs/{run}/ai-analysis` analyzes failed or timed-out runs using real run context.
+- **Audit and compliance**: workflow, scheduler, approval, auth, and user actions are recorded in audit logs.
 
-  4. Scheduler
-      - Cron-based workflow triggers
-      - schedule:work loop untuk scheduled workflows
-      - Pause/resume functionality
+## Local Setup
 
-  5. Real-Time Monitoring
-      - SSE (Server-Sent Events) untuk run detail monitoring
-      - Live step status updates
+Prerequisites:
 
-  6. AI Services
-      - Workflow builder: natural language → workflow JSON (Gemini)
-      - Failure analysis: error context → root cause + fix suggestions
-      - Token limit handling & output validation
+- PHP 8.4.1 or newer
+- Composer 2.x
+- PostgreSQL 16+
 
-  7. Audit System
-      - Comprehensive audit logs untuk compliance
-      - Track semua workflow actions
+Install and run:
 
-  #### d. Setup Instructions
+```bash
+composer install
+cp .env.example .env
+php artisan key:generate
+php artisan migrate --seed
+php artisan serve
+```
 
-  Prerequisites:
+Run the queue worker in another terminal:
 
-  PHP 8.4.1+
-  Composer 2.x
-  PostgreSQL 16+
+```bash
+php artisan queue:work --tries=1 --timeout=300 --sleep=1
+```
 
-  Local Development:
+Run due scheduled workflow triggers in another terminal:
 
-  # Clone repository
-  cd backend
+```bash
+php artisan workflow:scheduler:run
+```
 
-  # Install dependencies
-  composer install
+For continuous local scheduler execution, run that command once per minute using a shell loop or use the Docker scheduler service from the infra repository.
 
-  # Setup environment
-  cp .env.example .env
-  # Edit .env: set DB credentials, GEMINI_API_KEY
+## Environment Variables
 
-  # Generate application key
-  php artisan key:generate
+Important backend variables:
 
-  # Run migrations & seed demo data
-  php artisan migrate --seed
+```env
+APP_URL=http://127.0.0.1:8000
+APP_TIMEZONE=Asia/Jakarta
 
-  # Start development server
-  php artisan serve
+DB_CONNECTION=pgsql
+DB_HOST=127.0.0.1
+DB_PORT=5432
+DB_DATABASE=forgeflow_db
+DB_USERNAME=postgres
+DB_PASSWORD=secret
 
-  # In separate terminals:
-  # Start queue worker
-  php artisan queue:work
+QUEUE_CONNECTION=database
+CACHE_STORE=database
+SESSION_DRIVER=database
 
-  # Start scheduler (for cron-based workflows)
-  php artisan schedule:work
+GEMINI_API_KEY=your-gemini-api-key
+AI_PROVIDER=gemini
+AI_GEMINI_MODEL=gemini-2.5-flash
+AI_WORKFLOW_PROMPT_MAX_CHARS=8000
+AI_WORKFLOW_MAX_STEPS=20
+AI_WORKFLOW_TIMEOUT=300
+AI_FAILURE_LOG_LIMIT=100
+```
 
-  Docker Setup:
+`GEMINI_API_KEY` is required for AI workflow drafts and AI failure analysis. Non-AI workflow execution can run without it.
 
-  # See infra/readme.md for full Docker setup
-  cd ../infra
-  cp .env.example .env
-  docker compose up -d --build
+## API Highlights
 
-  # Access at http://localhost:8080
+Authentication:
 
-  #### e. Environment Variables
+- `POST /api/v1/auth/register` creates a tenant and the first admin user.
+- `POST /api/v1/auth/login` returns an API token and user/tenant context.
+- `GET /api/v1/auth/me` returns the current authenticated user.
+- `POST /api/v1/auth/logout` revokes the current token.
 
-  Required:
+Workflow management:
 
-  APP_URL=http://127.0.0.1:8000
-  APP_TIMEZONE=Asia/Jakarta
-  DB_CONNECTION=pgsql
-  DB_HOST=127.0.0.1
-  DB_PORT=5432
-  DB_DATABASE=forgeflow_db
-  DB_USERNAME=postgres
-  DB_PASSWORD=secret
+- `GET /api/v1/workflows` lists workflows with pagination and filters.
+- `POST /api/v1/workflows` creates a workflow and initial version.
+- `GET /api/v1/workflows/{workflow}` shows detail, active version, definition, and recent runtime data.
+- `PUT /api/v1/workflows/{workflow}` creates a new workflow version.
+- `POST /api/v1/workflows/{workflow}/runs` starts a manual run.
+- `GET /api/v1/workflows/{workflow}/versions` lists version history.
+- `POST /api/v1/workflows/{workflow}/rollback` rolls back to a previous version.
 
-  QUEUE_CONNECTION=database
+Runtime and approvals:
 
-  GEMINI_API_KEY=your-gemini-api-key
-  AI_PROVIDER=gemini
-  AI_GEMINI_MODEL=gemini-2.5-flash
+- `GET /api/v1/runs` lists workflow runs with pagination and filters.
+- `GET /api/v1/runs/{run}` shows run detail, steps, logs, approvals, and AI analysis.
+- `GET /api/v1/runs/{run}/events` streams live run status with SSE.
+- `GET /api/v1/runs/{run}/logs` returns logs for a run.
+- `GET /api/v1/runs/{run}/approvals` lists pending/completed approval records.
+- `POST /api/v1/runs/{run}/approvals/{approval}/approve` approves a waiting step.
+- `POST /api/v1/runs/{run}/approvals/{approval}/reject` rejects a waiting step.
 
-  #### f. Testing
+Triggers and AI:
 
-  # Run all tests
-  php artisan test
+- `POST /api/webhooks/workflows/{workflow}` receives incoming webhook triggers.
+- `GET /api/v1/scheduled-triggers` lists scheduled triggers.
+- `POST /api/v1/scheduled-triggers` creates a scheduled trigger.
+- `PATCH /api/v1/scheduled-triggers/{trigger}` updates, pauses, or resumes a trigger.
+- `POST /api/v1/ai/workflow-drafts` generates workflow JSON from a prompt.
+- `POST /api/v1/runs/{run}/ai-analysis` generates failure analysis for failed/timed-out runs.
 
-  # Run specific test suite
-  php artisan test --testsuite=Feature
-  php artisan test --testsuite=Unit
+Mock APIs for workflow testing:
 
-  # Current coverage: 62 tests passing
-  # Tests include: DAG validation, workflow execution, API endpoints, auth
+- `GET /api/mock/orders/{orderId}` returns mock order data.
+- `POST /api/mock/notifications` stores a mock notification request.
+- `POST /api/mock/orders/{orderId}/status` updates mock order status.
+- `GET /api/mock/time` returns mock server time data.
 
-  #### g. API Highlights
+## Workflow Definition Support
 
-  Core Endpoints:
+Supported triggers:
 
-  - POST /api/v1/auth/register - Register + auto-create tenant
-  - POST /api/v1/auth/login - JWT authentication
-  - GET /api/v1/workflows - List workflows (paginated, filtered, rate-limited)
-  - POST /api/v1/workflows - Create workflow with validation
-  - GET /api/v1/workflows/{id}/versions - Version history
-  - POST /api/v1/workflows/{id}/rollback - Rollback to version
-  - POST /api/v1/workflows/{id}/runs - Trigger workflow (manual)
-  - POST /api/v1/webhooks/{token} - Webhook trigger
-  - GET /api/v1/workflows/{id}/scheduled-triggers - Scheduled triggers
-  - PATCH /api/v1/scheduled-triggers/{id} - Pause/resume scheduler
-  - GET /api/v1/runs/{id}/events - SSE run monitoring
-  - POST /api/v1/approvals/{id}/approve - Approve workflow step
-  - POST /api/v1/approvals/{id}/reject - Reject workflow step
-  - POST /api/v1/ai/workflow-drafts - AI workflow generation
-  - POST /api/v1/ai/failure-analysis - AI failure analysis
+- `manual`
+- `webhook`
+- `scheduled`
 
-  Mock APIs (for testing workflows):
+Supported step types:
 
-  - GET /api/mock/orders/{id} - Mock order data
-  - POST /api/mock/notifications - Mock notification
-  - POST /api/mock/orders/{id}/status - Update order status
+- `http`
+- `delay`
+- `condition`
+- `script`
+- `approval`
 
-  #### h. Trade-offs & Design Decisions
+The workflow validator checks step IDs, dependencies, cycles, trigger type, step type, and required config fields. Condition steps support `equals`, `not_equals`, `contains`, `greater_than`, and `less_than` operators.
 
-  1. Database Queue vs Redis
+## Testing and Quality
 
-  - Choice: Laravel database queue driver
-  - Rationale: Simpler setup untuk MVP, PostgreSQL cukup untuk moderate load
-  - Trade-off: Kurang scalable dibanding Redis, tidak ada queue monitoring UI
-  - When to change: Ketika > 1000 jobs/minute atau perlu horizontal scaling
+Run the full backend suite:
 
-  2. Logs in PostgreSQL vs Separate Store
+```bash
+php artisan test
+```
 
-  - Choice: Execution logs di PostgreSQL logs table
-  - Rationale: Transactional consistency, simpler query untuk debugging
-  - Trade-off: Database bloat untuk high-volume workflows, kurang optimal untuk log search
-  - When to change: Ketika logs > 10GB atau perlu full-text search (migrate to Elasticsearch/Loki)
+Run code style checks:
 
-  3. SSE for Run Detail Only
+```bash
+./vendor/bin/pint --test
+```
 
-  - Choice: SSE hanya untuk /runs/{id}/events, tidak untuk list pages
-  - Rationale: List pages dengan SSE menyebabkan connection timeout & slow loading
-  - Trade-off: List pages tidak real-time, perlu manual refresh
-  - Alternative: Polling setiap 5-10 detik untuk list pages
+Validate Composer metadata:
 
-  4. Simple Scheduler Loop
+```bash
+composer validate --no-check-publish --strict
+```
 
-  - Choice: php artisan schedule:work untuk scheduled workflows
-  - Rationale: Laravel native solution, cukup untuk MVP
-  - Trade-off: Requires persistent process, no distributed scheduling
-  - When to change: Multi-server deployment (use Laravel Horizon + Redis)
+The current CI branch is `ci/github-actions-backend`. The GitHub Actions workflow runs Composer validation, installs dependencies with PHP 8.4, checks Pint style, runs `php artisan test`, and builds a Docker image artifact.
 
-  5. AI Output Validation
+## Docker
 
-  - Choice: Strict JSON schema validation + repair mechanism untuk AI output
-  - Rationale: LLM output tidak selalu valid, perlu fallback
-  - Trade-off: Extra processing time, kadang repair gagal
-  - Alternative: Fine-tuned model atau structured output API
+Docker orchestration lives in the separate infra repository:
 
-  6. No GraphQL
+```bash
+cd ../infra
+cp .env.example .env
+docker compose up -d --build
+docker compose ps
+```
 
-  - Choice: REST API only, skip GraphQL bonus
-  - Rationale: Time constraint, REST sufficient untuk MVP
-  - Trade-off: Over-fetching/under-fetching data, tidak ada client-driven queries
+Local Docker access is through the frontend gateway at:
 
-  7. Tenant Isolation via Middleware
+```text
+http://localhost:8080
+```
 
-  - Choice: Global scope + middleware untuk tenant filtering
-  - Rationale: Laravel best practice, automatic tenant scoping
-  - Trade-off: Accidental scope bypass risk jika lupa apply scope
-  - Mitigation: Comprehensive tests untuk tenant isolation
+The backend API is routed through the same origin under `/api/*`.
 
-  #### i. Improvements with More Time
+## Trade-offs
 
-  Infrastructure & DevOps:
+- Database queues keep the MVP simple but are less scalable than Redis/Horizon for high job volume.
+- PostgreSQL execution logs are easy to query with workflow data but can grow quickly under heavy workloads.
+- SSE is limited to run detail monitoring because list-page SSE caused cancelled connections and slow first loads.
+- The scheduler loop is simple and production-friendly for one server, but distributed scheduling would require a stronger coordination mechanism.
+- AI output is validated and repaired before use because LLM output can be incomplete or invalid.
 
-  - CI/CD pipeline (GitHub Actions): lint → test → build → deploy
-  - Redis + Laravel Horizon untuk queue monitoring & better scalability
-  - Separate log aggregation (Elasticsearch/Loki) untuk better search & retention
-  - OpenTelemetry tracing untuk distributed monitoring
-  - Production-ready health checks & metrics (Prometheus)
+## Future Improvements
 
-  Code Quality & Testing:
-
-  - Expand test coverage ke 90%+ (currently ~70%)
-  - E2E tests untuk complete workflow scenarios
-  - Performance benchmarking & load testing
-  - Code review documentation (REVIEW.md)
-  - Architecture decision records (ADR)
-
-  Features:
-
-  - GraphQL endpoint untuk flexible queries
-  - Workflow templates/marketplace
-  - Global timeout enforcer (separate service)
-  - Workflow versioning comparison (visual diff)
-  - Advanced retry strategies (jitter, circuit breaker)
-  - Workflow dependencies (trigger workflow B after A succeeds)
-  - Bulk operations (pause/resume multiple workflows)
-
-  Security & Compliance:
-
-  - Rate limiting per tenant (currently global only)
-  - Audit log export API
-  - Encrypted secrets storage untuk workflow configs
-  - IP whitelisting untuk webhooks
-  - OAuth2/SAML SSO support
-
-  AI Enhancements:
-
-  - Workflow optimization suggestions (based on execution history)
-  - Anomaly detection (unusually long runs, high failure rates)
-  - Smart retry recommendations
-  - Cost estimation untuk workflows
-
-  ———
+- Redis + Laravel Horizon for scalable queues and queue monitoring.
+- Dedicated log storage such as Loki or Elasticsearch.
+- OpenTelemetry tracing and Prometheus metrics.
+- More tenant-level rate limiting and audit export endpoints.
+- Encrypted workflow secrets for HTTP headers and body values.
+- GraphQL or richer query APIs if frontend data requirements grow.
