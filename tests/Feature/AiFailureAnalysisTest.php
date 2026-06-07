@@ -76,8 +76,8 @@ function aiFailureRun(object $test, string $status = 'failed'): array
 
 it('stores llm failure analysis from evidence context', function () {
     [$token, $run, $stepRun] = aiFailureRun($this);
-    config()->set('flowforge_ai.provider', 'gemini');
-    config()->set('flowforge_ai.model', 'gemini-2.5-flash');
+    config()->set('flowforge_ai.provider', 'openrouter');
+    config()->set('flowforge_ai.model', 'anthropic/claude-3.5-sonnet');
 
     $mock = Mockery::mock(AiFailureAnalysisGenerator::class);
     $mock->shouldReceive('generate')->once()->andReturn(new FailureAnalysisGenerationResult(
@@ -107,8 +107,8 @@ it('stores llm failure analysis from evidence context', function () {
         ->assertJsonPath('data.retryRecommended', true);
 
     $analysis = AiFailureAnalysis::query()->firstOrFail();
-    expect($analysis->provider)->toBe('gemini')
-        ->and($analysis->model)->toBe('gemini-2.5-flash')
+    expect($analysis->provider)->toBe('openrouter')
+        ->and($analysis->model)->toBe('anthropic/claude-3.5-sonnet')
         ->and($analysis->step_run_id)->toBe($stepRun->id)
         ->and($analysis->total_tokens)->toBe(23);
 

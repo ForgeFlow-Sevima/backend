@@ -33,8 +33,8 @@ function aiDraftToken(object $test): string
 }
 
 it('generates a workflow draft through the llm generator contract', function () {
-    config()->set('flowforge_ai.provider', 'gemini');
-    config()->set('flowforge_ai.model', 'gemini-2.5-flash');
+    config()->set('flowforge_ai.provider', 'openrouter');
+    config()->set('flowforge_ai.model', 'anthropic/claude-3.5-sonnet');
 
     $definition = [
         'name' => 'Refund Workflow',
@@ -66,8 +66,8 @@ it('generates a workflow draft through the llm generator contract', function () 
         ->assertJsonPath('data.steps.0.type', 'http');
 
     $generation = AiWorkflowGeneration::query()->firstOrFail();
-    expect($generation->provider)->toBe('gemini')
-        ->and($generation->model)->toBe('gemini-2.5-flash')
+    expect($generation->provider)->toBe('openrouter')
+        ->and($generation->model)->toBe('anthropic/claude-3.5-sonnet')
         ->and($generation->status)->toBe('success')
         ->and($generation->total_tokens)->toBe(30);
 });
