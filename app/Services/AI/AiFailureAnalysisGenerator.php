@@ -14,13 +14,16 @@ class AiFailureAnalysisGenerator
 {
     public const PROMPT_VERSION = 'failure-analysis-v1';
 
+    private readonly AiRuntimeConfig $aiConfig;
+
+    public function __construct(?AiRuntimeConfig $aiConfig = null)
+    {
+        $this->aiConfig = $aiConfig ?? app(AiRuntimeConfig::class);
+    }
+
     public function generate(WorkflowRun $run): FailureAnalysisGenerationResult
     {
-        if ((string) config('flowforge_ai.provider') === 'gemini' && blank(config('ai.providers.gemini.key'))) {
-            throw ValidationException::withMessages([
-                'ai' => 'Gemini API key is not configured. Set GEMINI_API_KEY in backend .env.',
-            ]);
-        }
+        $this->aiConfig->assertConfigured('ai');
 
         $run->loadMissing([
             'workflow.currentVersion',
@@ -145,9 +148,9 @@ PROMPT;
         try {
             $response = $agent->prompt(
                 $prompt,
-                provider: config('flowforge_ai.provider', 'gemini'),
-                model: config('flowforge_ai.model', 'gemini-2.5-flash'),
-                timeout: (int) config('flowforge_ai.timeout', 300),
+                provider: $this->aiConfig->provider(),
+                model: $this->aiConfig->model(),
+                timeout: $this->aiConfig->timeout(),
             );
         } catch (Throwable $exception) {
             throw ValidationException::withMessages([

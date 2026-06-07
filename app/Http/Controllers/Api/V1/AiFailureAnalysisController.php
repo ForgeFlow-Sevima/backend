@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Resources\AiFailureAnalysisResource;
 use App\Models\WorkflowRun;
 use App\Services\AI\AiFailureAnalysisGenerator;
+use App\Services\AI\AiRuntimeConfig;
 use App\Services\Workflow\AuditLogger;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -15,6 +16,7 @@ class AiFailureAnalysisController extends Controller
     public function __construct(
         private readonly AuditLogger $auditLogger,
         private readonly AiFailureAnalysisGenerator $generator,
+        private readonly AiRuntimeConfig $aiConfig,
     ) {}
 
     public function show(Request $request, WorkflowRun $run): AiFailureAnalysisResource
@@ -40,8 +42,8 @@ class AiFailureAnalysisController extends Controller
             'tenant_id' => $request->user()->tenant_id,
             'step_run_id' => $affectedStepRun?->id,
             'requested_by_user_id' => $request->user()->id,
-            'provider' => config('flowforge_ai.provider', 'gemini'),
-            'model' => config('flowforge_ai.model', 'gemini-2.5-flash'),
+            'provider' => $this->aiConfig->provider(),
+            'model' => $this->aiConfig->model(),
             'prompt_version' => AiFailureAnalysisGenerator::PROMPT_VERSION,
             'prompt_text' => $result->promptText,
             'input_context' => $result->inputContext,

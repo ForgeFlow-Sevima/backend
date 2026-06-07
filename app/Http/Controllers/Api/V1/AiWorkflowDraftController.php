@@ -5,13 +5,14 @@ namespace App\Http\Controllers\Api\V1;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\V1\AiWorkflowDraftRequest;
 use App\Models\AiWorkflowGeneration;
+use App\Services\AI\AiRuntimeConfig;
 use App\Services\AI\WorkflowDraftGenerator;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Validation\ValidationException;
 
 class AiWorkflowDraftController extends Controller
 {
-    public function store(AiWorkflowDraftRequest $request, WorkflowDraftGenerator $generator): JsonResponse
+    public function store(AiWorkflowDraftRequest $request, WorkflowDraftGenerator $generator, AiRuntimeConfig $aiConfig): JsonResponse
     {
         set_time_limit((int) config('flowforge_ai.timeout', 300));
 
@@ -24,8 +25,8 @@ class AiWorkflowDraftController extends Controller
             AiWorkflowGeneration::query()->create([
                 'tenant_id' => $request->user()->tenant_id,
                 'requested_by_user_id' => $request->user()->id,
-                'provider' => config('flowforge_ai.provider', 'gemini'),
-                'model' => config('flowforge_ai.model', 'gemini-2.5-flash'),
+                'provider' => $aiConfig->provider(),
+                'model' => $aiConfig->model(),
                 'user_prompt' => $prompt,
                 'prompt_version' => WorkflowDraftGenerator::PROMPT_VERSION,
                 'validation_errors' => $exception->errors(),
@@ -39,8 +40,8 @@ class AiWorkflowDraftController extends Controller
         AiWorkflowGeneration::query()->create([
             'tenant_id' => $request->user()->tenant_id,
             'requested_by_user_id' => $request->user()->id,
-            'provider' => config('flowforge_ai.provider', 'gemini'),
-            'model' => config('flowforge_ai.model', 'gemini-2.5-flash'),
+            'provider' => $aiConfig->provider(),
+            'model' => $aiConfig->model(),
             'user_prompt' => $prompt,
             'prompt_version' => WorkflowDraftGenerator::PROMPT_VERSION,
             'system_prompt' => 'ForgeFlow workflow draft structured JSON agent.',
