@@ -15,15 +15,16 @@ class WorkflowDraftGenerator
 {
     public const PROMPT_VERSION = 'workflow-draft-v1';
 
-    public function __construct(private readonly WorkflowDefinitionValidator $validator) {}
+    private readonly AiRuntimeConfig $aiConfig;
+
+    public function __construct(private readonly WorkflowDefinitionValidator $validator, ?AiRuntimeConfig $aiConfig = null)
+    {
+        $this->aiConfig = $aiConfig ?? app(AiRuntimeConfig::class);
+    }
 
     public function generate(string $prompt, array $context = []): WorkflowDraftGenerationResult
     {
-        if ((string) config('flowforge_ai.provider') === 'gemini' && blank(config('ai.providers.gemini.key'))) {
-            throw ValidationException::withMessages([
-                'prompt' => 'Gemini API key is not configured. Set GEMINI_API_KEY in backend .env.',
-            ]);
-        }
+        $this->aiConfig->assertConfigured('prompt');
 
         [$boundedPrompt, $truncated] = $this->boundPrompt($prompt);
         $agent = new WorkflowDraftAgent((int) config('flowforge_ai.max_steps', 20));
@@ -55,9 +56,9 @@ class WorkflowDraftGenerator
         try {
             $response = $agent->prompt(
                 $prompt,
-                provider: config('flowforge_ai.provider', 'gemini'),
-                model: config('flowforge_ai.model', 'gemini-2.5-flash'),
-                timeout: (int) config('flowforge_ai.timeout', 300),
+                provider: $this->aiConfig->provider(),
+                model: $this->aiConfig->model(),
+                timeout: $this->aiConfig->timeout(),
             );
         } catch (Throwable $exception) {
             throw ValidationException::withMessages([
