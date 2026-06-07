@@ -86,16 +86,19 @@ QUEUE_CONNECTION=database
 CACHE_STORE=database
 SESSION_DRIVER=database
 
-GEMINI_API_KEY=your-gemini-api-key
-AI_PROVIDER=gemini
-AI_GEMINI_MODEL=gemini-2.5-flash
+AI_PROVIDER=openrouter
+AI_MODEL=anthropic/claude-3.5-sonnet
+OPENROUTER_API_KEY=your-openrouter-api-key
+GEMINI_API_KEY=
+OPENAI_API_KEY=
+ANTHROPIC_API_KEY=
 AI_WORKFLOW_PROMPT_MAX_CHARS=8000
 AI_WORKFLOW_MAX_STEPS=20
 AI_WORKFLOW_TIMEOUT=300
 AI_FAILURE_LOG_LIMIT=100
 ```
 
-`GEMINI_API_KEY` is required for AI workflow drafts and AI failure analysis. Non-AI workflow execution can run without it.
+`OPENROUTER_API_KEY` is required when `AI_PROVIDER=openrouter`. ForgeFlow also supports other Laravel AI SDK providers such as `gemini`, `openai`, `anthropic`, and `ollama`; set `AI_PROVIDER`, `AI_MODEL`, and the matching provider key in `.env`. Non-AI workflow execution can run without an AI key.
 
 ## API Highlights
 
@@ -168,7 +171,8 @@ ForgeFlow uses two LLM-assisted features: workflow draft generation and failure 
 - **Failure analysis** uses only supplied run context: workflow definition, run input/output, step runs, execution logs, approval state, and error messages. The prompt instructs the model to tie `rootCause` and `suggestedFix` to concrete evidence instead of guessing.
 - **Token limits** are controlled with `AI_WORKFLOW_PROMPT_MAX_CHARS`, `AI_WORKFLOW_MAX_STEPS`, `AI_WORKFLOW_TIMEOUT`, and `AI_FAILURE_LOG_LIMIT` so large prompts and noisy logs do not exceed provider limits.
 - **Malformed output protection** is handled by requiring structured JSON, normalizing generated fields, running the same workflow validator used for manual JSON submissions, attempting one repair prompt, and falling back to a conservative draft when possible.
-- **Security boundary**: provider keys stay in backend environment variables. The frontend never calls Gemini directly and never receives provider secrets.
+- **Provider selection** is environment-driven. `AI_PROVIDER=openrouter` with `AI_MODEL=anthropic/claude-3.5-sonnet` is the default, and the same runtime config is used by workflow drafts and failure analysis.
+- **Security boundary**: provider keys stay in backend environment variables. The frontend never calls the LLM provider directly and never receives provider secrets.
 
 ## Query Optimization
 
