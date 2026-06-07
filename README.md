@@ -111,10 +111,10 @@ Workflow management:
 - `GET /api/v1/workflows` lists workflows with pagination and filters.
 - `POST /api/v1/workflows` creates a workflow and initial version.
 - `GET /api/v1/workflows/{workflow}` shows detail, active version, definition, and recent runtime data.
-- `PUT /api/v1/workflows/{workflow}` creates a new workflow version.
+- `PATCH /api/v1/workflows/{workflow}` creates a new workflow version.
 - `POST /api/v1/workflows/{workflow}/runs` starts a manual run.
 - `GET /api/v1/workflows/{workflow}/versions` lists version history.
-- `POST /api/v1/workflows/{workflow}/rollback` rolls back to a previous version.
+- `POST /api/v1/workflows/{workflow}/versions/{version}/rollback` rolls back to a previous version.
 
 Runtime and approvals:
 
@@ -159,6 +159,20 @@ Supported step types:
 - `approval`
 
 The workflow validator checks step IDs, dependencies, cycles, trigger type, step type, and required config fields. Condition steps support `equals`, `not_equals`, `contains`, `greater_than`, and `less_than` operators.
+
+## AI Prompt Engineering
+
+ForgeFlow uses two LLM-assisted features: workflow draft generation and failure analysis. Both are implemented through Laravel AI SDK agents with structured JSON output, then validated by backend services before the response is persisted or returned to the frontend.
+
+- **Workflow drafts** use a system prompt that constrains output to ForgeFlow's workflow schema: triggers must be `manual`, `webhook`, or `scheduled`; step types must be `http`, `delay`, `condition`, `script`, or `approval`; and generated definitions must be practical for the mock API/testing endpoints.
+- **Failure analysis** uses only supplied run context: workflow definition, run input/output, step runs, execution logs, approval state, and error messages. The prompt instructs the model to tie `rootCause` and `suggestedFix` to concrete evidence instead of guessing.
+- **Token limits** are controlled with `AI_WORKFLOW_PROMPT_MAX_CHARS`, `AI_WORKFLOW_MAX_STEPS`, `AI_WORKFLOW_TIMEOUT`, and `AI_FAILURE_LOG_LIMIT` so large prompts and noisy logs do not exceed provider limits.
+- **Malformed output protection** is handled by requiring structured JSON, normalizing generated fields, running the same workflow validator used for manual JSON submissions, attempting one repair prompt, and falling back to a conservative draft when possible.
+- **Security boundary**: provider keys stay in backend environment variables. The frontend never calls Gemini directly and never receives provider secrets.
+
+## Query Optimization
+
+The primary run-history optimization is documented in [`docs/query-optimization.md`](docs/query-optimization.md). It covers the tenant-scoped `GET /api/v1/runs` query, the `idx_workflow_runs_tenant_created` composite index, representative `EXPLAIN ANALYZE` output, and the read/write trade-off.
 
 ## Testing and Quality
 
